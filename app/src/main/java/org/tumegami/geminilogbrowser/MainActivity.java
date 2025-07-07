@@ -27,6 +27,7 @@ public class MainActivity extends AppCompatActivity {
     private Handler handler = new Handler();
     private Runnable logRunnable;
     private String currentLogFileName = "";
+    private String lastLoggedContent = "";
     private static final String DESKTOP_USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/51.0.2704.103 Safari/537.36";
 
     @Override
@@ -118,8 +119,14 @@ public class MainActivity extends AppCompatActivity {
                                     org.json.JSONObject json = new org.json.JSONObject(value);
                                     String content = json.getString("content");
                                     String url = json.getString("url");
-                                    logToFile("Content", content);
-                                    logToFile("URL", url);
+
+                                    // コンテンツが変更された場合のみログに記録
+                                    if (!content.equals(lastLoggedContent)) {
+                                        logToFile("Content", content);
+                                        lastLoggedContent = content; // 最後のログ内容を更新
+                                    }
+                                    // URLログは不要なので削除
+                                    // logToFile("URL", url);
                                 } catch (org.json.JSONException e) {
                                     e.printStackTrace();
                                     System.err.println("JSON parsing error: " + e.getMessage());
@@ -135,9 +142,10 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void logToFile(String tag, String content) {
+        // currentLogFileNameが空の場合は、updateLogFileNameで設定されることを期待
         if (currentLogFileName.isEmpty()) {
-            // ファイル名がまだ設定されていない場合はデフォルト名で初期化
-            updateLogFileName(webView.getUrl());
+            System.err.println("Log file name is not set. Skipping logToFile.");
+            return;
         }
 
         File logDir = getExternalFilesDir(null);
@@ -188,14 +196,17 @@ public class MainActivity extends AppCompatActivity {
         public void onPageStarted(WebView view, String url, Bitmap favicon) {
             super.onPageStarted(view, url, favicon);
             System.out.println("onPageStarted: " + url);
-            logToFile("URL", "onPageStarted: " + url);
-            updateLogFileName(url);
+            // URLログは不要なので削除
+            // logToFile("URL", "onPageStarted: " + url);
+            updateLogFileName(url); // ページ開始時にログファイル名を更新
+            lastLoggedContent = ""; // 新しいページが始まったらログ内容をリセット
         }
 
         @Override
         public boolean shouldOverrideUrlLoading(WebView view, String url) {
             System.out.println("shouldOverrideUrlLoading: " + url);
-            logToFile("URL", "shouldOverrideUrlLoading: " + url);
+            // URLログは不要なので削除
+            // logToFile("URL", "shouldOverrideUrlLoading: " + url);
             // Let the WebView handle the URL loading
             return false;
         }
@@ -204,8 +215,9 @@ public class MainActivity extends AppCompatActivity {
         public void onPageFinished(WebView view, String url) {
             super.onPageFinished(view, url);
             System.out.println("onPageFinished: " + url);
-            logToFile("URL", "onPageFinished: " + url);
-            // Start logging when the page is finished loading
+            // URLログは不要なので削除
+            // logToFile("URL", "onPageFinished: " + url);
+            updateLogFileName(url); // ページ終了時にもログファイル名を更新
             startLogging();
         }
 
@@ -222,8 +234,9 @@ public class MainActivity extends AppCompatActivity {
         @Override
         public void onProgressChanged(WebView view, int newProgress) {
             super.onProgressChanged(view, newProgress);
-            System.out.println("onProgressChanged: " + newProgress + "%");
-            logToFile("Progress", String.valueOf(newProgress));
+            // Progressログは不要なので削除
+            // System.out.println("onProgressChanged: " + newProgress + "%");
+            // logToFile("Progress", String.valueOf(newProgress));
         }
 
         @Override
@@ -231,6 +244,15 @@ public class MainActivity extends AppCompatActivity {
             String message = "Console: " + consoleMessage.message() + " -- From line "
                     + consoleMessage.lineNumber() + " of "
                     + consoleMessage.sourceId();
+
+            // 広告関連、DOM関連、一般的な接続拒否メッセージをフィルタリング
+            if (message.contains("googleadservices.com") ||
+                message.contains("pagead") ||
+                message.contains("DOMNodeInserted") ||
+                message.contains("Refused to connect")) {
+                return true; // メッセージを処理済みとしてWebViewに通知
+            }
+
             System.out.println(message);
             logToFile("Console", message);
             return super.onConsoleMessage(consoleMessage);
