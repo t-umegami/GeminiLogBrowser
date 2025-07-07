@@ -1,3 +1,73 @@
+## Gemini CLIタスク引き継ぎ資料
+
+**日付**: 2025年7月7日
+**現在の担当エージェント**: Gemini (旧インスタンス)
+**引き継ぎ先エージェント**: Gemini (新インスタンス)
+
+---
+
+**1. プロジェクト概要**
+
+*   **プロジェクト名**: `GeminiLogBrowser` (Android Studioプロジェクト)
+*   **目的**: Androidデバイス上で動作するWebViewベースのアプリケーションで、Google Gemini Webアプリの会話ログを自動的に取得し、Google Driveを介してTermux上で動作するGemini CLIと連携するための基盤を構築する。
+*   **最終目標**: Gemini WebアプリとTermux上のGemini CLIの間で、Google Driveを「メールボックス」として利用した非同期の双方向通信を実現する。具体的には、Gemini Webアプリが会話ログをGoogle Driveに書き出し、Termux CLIがそれを読み込み、処理し、結果をGoogle Driveに書き戻す。
+*   **現在のフェーズ**: `GeminiLogBrowser` アプリケーションのログ取得機能のデバッグと改善。
+
+**2. これまでの作業経緯**
+
+*   **初期段階**: 
+    *   ユーザーから提供された `simple_browser_chromebook_build_guide.md` および `handover_document_for_new_instance.md` を読み込み、プロジェクトの目的とビルドガイドを理解。
+    *   `handover_document_for_new_instance.md` から、`GeminiLogBrowser` が新しいインスタンスに引き継がれたプロジェクトであり、`simple_browser_chromebook_build_guide.md` がビルドガイドであることが判明。
+*   **プロジェクトタイプの誤解と修正**:
+    *   当初、`simple_browser_chromebook_build_guide.md` の内容からKivyアプリケーションと誤解し、`buildozer` を使用しようとした。
+    *   ユーザーからの情報により、Android Studioプロジェクトであることが判明し、`buildozer` 関連の変更（`buildozer.spec` の生成など）をGitリポジトリからクリーンアップした。
+    *   Gitリポジリは `master` ブランチで、最新コミットハッシュ `f522160` でクリーンな状態に戻されている。
+*   **Gradleビルドへの移行と初期エラーの解決**:
+    *   Gradle (`./gradlew build`) を使用してビルドを開始。
+    *   **エラー1 (JUnit)**: `ExampleUnitTest.java` がJUnitの依存関係を見つけられないエラーが発生。`app/build.gradle` にJUnit (`testImplementation 'junit:junit:4.13.2'`, `androidTestImplementation 'androidx.test.ext:junit:1.1.5'`, `androidTestImplementation 'androidx.test.espresso:espresso-core:3.5.1'`) を追加することで解決。
+    *   **エラー2 (Lint/NewApi)**: `MainActivity.java` の `setWebViewRenderProcessClient` メソッドが `minSdk` (21) よりも高いAPIレベル (29) を要求するエラーが発生。`app/build.gradle` の `minSdk` を29に引き上げることで解決。
+*   **ログ機能の改善**:
+    *   **CSP違反ログのフィルタリング**: `googleadservices.com` に関連するCSP違反のコンソールメッセージがログに記録される問題が発生。`MainActivity.java` の `onConsoleMessage` メソッドを修正し、フィルタリングロジックを追加。
+    *   **ログの重複排除とノイズ除去**: 会話ログの重複、`Progress`、`URL`、および特定の `Console` ログのノイズを排除するため、`MainActivity.java` のログロジックを修正。
+        *   `lastLoggedContent` フィールドを導入し、コンテンツが変更された場合のみログに記録。
+        *   `Progress` および `URL` ログ出力の停止。
+        *   `Console` ログのフィルタリング条件を拡張 (`googleadservices.com`, `pagead`, `DOMNodeInserted`, `Refused to connect`)。
+        *   `updateLogFileName` の呼び出しを `onPageStarted` と `onPageFinished` に限定し、`lastLoggedContent` をリセットするロジックを追加。
+
+**3. 現在の課題と未解決の問題**
+
+*   **`Console: Listener added for a 'DOMNodeInserted' mutation event.` メッセージのフィルタリング問題**:
+    *   `MainActivity.java` の `onConsoleMessage` メソッドで、`DOMNodeInserted` を含むコンソールメッセージをフィルタリングしようとしているが、まだログに記録されている。
+    *   これまでの試み (`contains()`, `matches()` を含む正規表現) では、このメッセージを完全にフィルタリングできていない。
+    *   原因として、正規表現のパターン文字列内のバックスラッシュのエスケープが不適切である可能性、または `replace` ツールの `old_string` と `new_string` の厳密なマッチング要件を満たせていない可能性が考えられる。
+    *   直近の試みでは、`replace` ツールが `old_string` の不一致で失敗している。
+*   **`Content` ログの重複排除のさらなる改善**:
+    *   `document.body.innerText` を使用しているため、ページの微細な変化（広告の更新、UIの微細な変化など）によってもログが記録されてしまう。
+    *   より厳密に「会話部分」のみを抽出し、その変更があった場合のみログに記録するロジックが必要。これには、Gemini WebアプリのDOM構造を詳細に分析する必要がある。
+
+**4. 次のインスタンスへの引き継ぎ事項**
+
+新しくタスクを引き継ぐGeminiインスタンスは、以下の点に注力してください。
+
+1.  **`MainActivity.java` の `onConsoleMessage` メソッドの修正**:
+    *   現在の `MainActivity.java` の内容を正確に把握し、`onConsoleMessage` メソッド内の正規表現フィルタリングロジックを修正してください。
+    *   特に、`DOMNodeInserted` および `Refused to load the image` (これはまだフィルタリングされていない可能性があります) のメッセージが完全にログから排除されるようにしてください。
+    *   `replace` ツールの `old_string` と `new_string` の厳密なマッチング要件を考慮し、必要に応じてファイル全体を読み込み、メモリ内で変更を適用し、`write_file` で書き戻す戦略を検討してください。
+2.  **`Content` ログの抽出ロジックの改善**:
+    *   Gemini WebアプリのDOM構造を詳細に分析し、会話部分のHTML要素を特定してください。
+    *   `MainActivity.java` の `startLogging` メソッド内のJavaScriptコードを修正し、特定した会話要素のテキストコンテンツのみを抽出するようにしてください。これにより、会話ログの重複が完全に排除され、よりクリーンなログが取得できるようになります。
+3.  **ビルドと動作確認**:
+    *   上記修正後、プロジェクトをビルドし、Androidデバイスで動作確認を行ってください。
+    *   ログファイルが期待通りに生成され、不要なメッセージがフィルタリングされ、会話ログが重複なく記録されていることを確認してください。
+4.  **スナップショットの作成**:
+    *   ログ機能が期待通りに動作し、APKが安定したと判断できる段階になったら、現在のGitの状態と作業内容をまとめたスナップショットのMarkdownファイルを再度作成してください。
+
+**5. 参考資料**
+
+*   **プロジェクトディレクトリ**: `/home/tumegami/GeminiLogBrowser/`
+*   **現在の `MainActivity.java` の内容**: 
+
+```java
 package org.tumegami.geminilogbrowser;
 
 import android.graphics.Bitmap;
@@ -112,7 +182,7 @@ public class MainActivity extends AppCompatActivity {
             public void run() {
                 // WebViewのコンテンツとURLをJavaScriptで取得
                 webView.evaluateJavascript(
-                        "(function(){\n    let conversationContent = \"\";\n    const conversationTurns = document.querySelectorAll(\".conversation-turn\");\n    conversationTurns.forEach(turn => {\n        const messageContent = turn.querySelector(\".message-content\");\n        if (messageContent) {\n            conversationContent += messageContent.innerText + \"\\n\\n\";\n        }\n    });\n    return { content: conversationContent.trim(), url: document.URL };\n})();",
+                        "(function() { return { content: document.body.innerText, url: document.URL }; })();",
                         value -> {
                             System.out.println("evaluateJavascript result: " + value);
                             if (value != null && !value.equals("null") && !value.isEmpty()) {
@@ -132,8 +202,7 @@ public class MainActivity extends AppCompatActivity {
                                     e.printStackTrace();
                                     System.err.println("JSON parsing error: " + e.getMessage());
                                 }
-                            }
-                            else {
+                            } else {
                                 System.out.println("evaluateJavascript returned null or empty value.");
                             }
                         });
@@ -234,6 +303,14 @@ public class MainActivity extends AppCompatActivity {
     // 独立したWebChromeClientクラス
     private class MyWebChromeClient extends WebChromeClient {
         @Override
+        public void onProgressChanged(WebView view, int newProgress) {
+            super.onProgressChanged(view, newProgress);
+            // Progressログは不要なので削除
+            // System.out.println("onProgressChanged: " + newProgress + "%");
+            // logToFile("Progress", String.valueOf(newProgress));
+        }
+
+        @Override
         public boolean onConsoleMessage(android.webkit.ConsoleMessage consoleMessage) {
             String message = "Console: " + consoleMessage.message() + " -- From line "
                     + consoleMessage.lineNumber() + " of "
@@ -243,7 +320,7 @@ public class MainActivity extends AppCompatActivity {
             // System.out.println("DEBUG: Console Message: " + message); // デバッグ完了のため削除
 
             // 広告関連、DOM関連、一般的な接続拒否メッセージをフィルタリング
-            if (Pattern.compile(".*(googleadservices\\.com|pagead|DOMNodeInserted|mutation event|Refused to connect|Refused to load the image).*").matcher(message).matches()) {
+            if (Pattern.compile(".*(googleadservices\\.com|pagead|DOMNodeInserted|mutation event|Refused to connect).*\").matcher(message).matches()) {
                 return true; // メッセージを処理済みとしてWebViewに通知
             }
 
@@ -251,13 +328,5 @@ public class MainActivity extends AppCompatActivity {
             logToFile("Console", message);
             return super.onConsoleMessage(consoleMessage);
         }
-
-        @Override
-        public void onProgressChanged(WebView view, int newProgress) {
-            super.onProgressChanged(view, newProgress);
-            // Progressログは不要なので削除
-            // System.out.println("onProgressChanged: " + newProgress + "%");
-            // logToFile("Progress", String.valueOf(newProgress));
-        }
     }
-}
+}```
