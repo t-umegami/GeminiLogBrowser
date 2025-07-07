@@ -46,7 +46,7 @@ public class MainActivity extends AppCompatActivity {
         webSettings.setDomStorageEnabled(true); // DOMストレージを有効化
         webSettings.setDatabaseEnabled(true); // データベースAPIを有効化
         webSettings.setCacheMode(WebSettings.LOAD_DEFAULT); // キャッシュモードを設定
-        webSettings.setUserAgentString(DESKTOP_USER_AGENT); // PC用ユーザーエージェントを設定
+        // webSettings.setUserAgentString(DESKTOP_USER_AGENT); // PC用ユーザーエージェントを設定
 
         // レンダリング優先度を高く設定
         webSettings.setRenderPriority(WebSettings.RenderPriority.HIGH);
